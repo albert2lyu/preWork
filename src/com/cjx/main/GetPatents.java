@@ -11,6 +11,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
@@ -21,11 +22,12 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
-
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.NameValuePair;
+import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
+import com.cjx.utils.Constants;
 
 /**
  * <p>
@@ -44,12 +46,12 @@ public class GetPatents {
 
 		GetPatents getPatents = new GetPatents();
 
-		// 获取商业专利方法专利列表页面，已知商业方法专利中发明型专利11525个，实用新型专利888个
-		// 在这里用了最笨的方法，一个页面专利数100，总共有发明型专利页面116页，实用新型专利9页，所以用了两个for循环抓取专利列表页面
-		for (int i = 1; i <= 116; i++) {
+		// 获取商业专利方法专利列表页面，已知商业方法专利中发明型专利11525/27048个，实用新型专利888/3311个
+		// 在这里用了最笨的方法，一个页面专利数100/20，总共有发明型专利页面116/1353页，实用新型专利9/166页，所以用了两个for循环抓取专利列表页面
+		for (int i = 1; i <= 2; i++) {
 			getPatents.getPatentListPage("11", i);
 		}
-		for (int j = 1; j <= 9; j++) {
+		for (int j = 1; j <= 2; j++) {
 			getPatents.getPatentListPage("22", j);
 		}
 
@@ -78,15 +80,12 @@ public class GetPatents {
 	private void getPatentListPage(String type, int page) {
 
 		// 中国知识局的查询接口
-		String url = "http://211.157.104.87:8080/sipo/zljs/hyjs-jieguo.jsp";
-//		String url = "http://www.sipo.gov.cn/zljs/";
+		String url = Constants.CHINA_SIPO_URL;
 		PostMethod postMethod = new UTF8PostMethod(url);
 
 		// 填入各个表单域的值
-		NameValuePair[] data = {
-
-		new NameValuePair("recshu", "100"),
-				new NameValuePair("searchword", "分类号=('%G06Q%%')"),
+		NameValuePair[] data = { new NameValuePair("recshu", "20"),
+				new NameValuePair("searchword", "分类号=('%G06Q%')"),
 				new NameValuePair("flag3", "1"),
 				new NameValuePair("selectbase", type),
 				new NameValuePair("pg", String.valueOf(page)),
@@ -99,7 +98,7 @@ public class GetPatents {
 		HttpClient httpClient = new HttpClient();
 		httpClient.getHttpConnectionManager().getParams()
 				.setConnectionTimeout(30000);
-		httpClient.getHttpConnectionManager().getParams().setSoTimeout(30000);
+		httpClient.getHttpConnectionManager().getParams().setSoTimeout(300000);
 
 		try {
 			int statusCode = httpClient.executeMethod(postMethod);
@@ -123,14 +122,11 @@ public class GetPatents {
 			if (html.length() < 100) {
 				throw new Exception("页面错误！" + html.length());
 			}
-
-			// String filepath = "E:/cjx/patents/patentlist/patentListPage/" +
-			// type + "/patentListPage" + page + ".html";
-			String filepath = "E:/dir/patents/patentlist/patentListPage/"
-					+ type + "/patentListPage" + page + ".html";
+			String filepath = Constants.WEBSITE_DIRECTORY_PATH + type
+					+ "/patentListPage" + page + ".html";
 			File f = new File(filepath);
 			if (!f.exists()) {
-//				f.mkdir();
+				// f.mkdir();
 				f.createNewFile();
 			}
 			FileWriter wt = new FileWriter(f);
@@ -142,12 +138,12 @@ public class GetPatents {
 			System.out.println("专利列表页面保存成功！---" + type + "  " + page);
 
 		} catch (SocketTimeoutException e) {
-			System.err.println("页面无法访问,重试！  错误信息：" + e.getMessage()
+			System.err.println("页面无法访问,重试！  错误信息1：" + e.getMessage()
 					+ "    type:" + type + "    page:" + page);
 			postMethod.releaseConnection();
 			getPatentListPage(type, page);
 		} catch (Exception e) {
-			System.err.println("页面无法访问,重试！  错误信息：" + e.getMessage()
+			System.err.println("页面无法访问,重试！  错误信息2：" + e.getMessage()
 					+ "    type:" + type + "    page:" + page);
 			postMethod.releaseConnection();
 			getPatentListPage(type, page);
@@ -155,25 +151,75 @@ public class GetPatents {
 		postMethod.releaseConnection();
 	}
 
+	public StringBuilder getHTML(String pageURL, String encoding) {
+		StringBuilder pageHTML = new StringBuilder();
+		try {
+			URL url = new URL(pageURL);
+			HttpURLConnection connection = (HttpURLConnection) url
+					.openConnection();
+			connection.setRequestProperty("User-Agent", "MSIE 7.0");
+			BufferedReader br = new BufferedReader(new InputStreamReader(
+					connection.getInputStream(), encoding));
+			String line = null;
+			while ((line = br.readLine()) != null) {
+				pageHTML.append(line);
+				pageHTML.append("\r\n");
+			}
+			connection.disconnect();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return pageHTML;
+	}
+
+	/**
+	 * 从soopat取得专利列表
+	 * 
+	 */
+	private void getPatentListPage2(String type, int page) {
+
+		// soopat的查询接口
+		String url = "http://www2.soopat.com/Home/Result?SearchWord=FLH%3A(G06Q)%20&FMZL=Y&SYXX=Y&WGZL=Y&PatentIndex=10";
+		try {
+			StringBuilder html = getHTML(url, "utf-8");
+			if (html.length() < 100) {
+				throw new Exception("页面错误！" + html.length());
+			}
+			String filepath = "E:/dir/patents/patentlist/patentListPage/"
+					+ type + "/patentListPage" + page + ".html";
+			File f = new File(filepath);
+			if (!f.exists()) {
+				f.createNewFile();
+			}
+			FileWriter wt = new FileWriter(f);
+			BufferedWriter bw = new BufferedWriter(wt);
+			bw.write(html.toString());
+			bw.flush();
+			bw.close();
+			System.out.println("专利列表页面保存成功！---" + type + "  " + page);
+
+		} catch (SocketTimeoutException e) {
+			System.err.println("页面无法访问,重试！  错误信息1：" + e.getMessage()
+					+ "    type:" + type + "    page:" + page);
+			getPatentListPage(type, page);
+		} catch (Exception e) {
+			System.err.println("页面无法访问,重试！  错误信息2：" + e.getMessage()
+					+ "    type:" + type + "    page:" + page);
+			getPatentListPage(type, page);
+		}
+	}
+
 	// 获取专利检索结果页面的URL存入TXT文件
 	public void getAllUrls(String type) throws IOException {
-
-		// File urlsfile = new
-		// File("E:/cjx/patents/patentlist/patentListPage/patentList" + type +
-		// "Url.txt");
-		File urlsfile = new File(
-				"E:/dir/patents/patentlist/patentListPage/patentList" + type
-						+ "Url.txt");
+		File urlsfile = new File(Constants.URL_TXT_PATH + "patentList" + type
+				+ "Url.txt");
 		if (urlsfile.exists()) {
 			urlsfile.delete();
 		}
 		FileWriter wt = new FileWriter(urlsfile, true);
 		BufferedWriter bw = new BufferedWriter(wt);
 
-		// File file = new File("E:/cjx/patents/patentlist/patentListPage/"+
-		// type + "/");
-		File file = new File("E:/dir/patents/patentlist/patentListPage/" + type
-				+ "/");
+		File file = new File(Constants.WEBSITE_DIRECTORY_PATH + type + "/");
 		File[] name = file.listFiles();
 		int l = name.length;
 		for (int i = 0; i < l; i++) {
@@ -198,7 +244,7 @@ public class GetPatents {
 			while ((tempbf = br.readLine()) != null) {
 				html.append(tempbf + "\n");
 			}
-			URL u = new URL("http://211.157.104.87:8080/sipo/zljs/");
+			URL u = new URL(Constants.CHINA_SIPO_SHOW_URL);
 			results = parseLinksInDocument(u, html.toString());
 
 			for (Iterator<URL> i = results.iterator(); i.hasNext();) {
@@ -228,25 +274,17 @@ public class GetPatents {
 	public void downloadHtmls(String type) {
 
 		try {
-
-			// File f = new File("E:/cjx/patents/patentPages/");
-			File f = new File("E:/dir/patents/patentPages/");
+			File f = new File(Constants.WEBSITE_PATH);
 			if (!f.exists()) {
 				f.mkdir();
 
 			}
-			// File f2 = new File("E:/cjx/patents/patentPages/"+type);
-			File f2 = new File("E:/dir/patents/patentPages/" + type);
+			File f2 = new File(Constants.WEBSITE_PATH + type);
 			if (!f2.exists()) {
 				f2.mkdir();
-
 			}
-			// FileInputStream fis = new
-			// FileInputStream("E:/cjx/patents/patentlist/patentListPage/patentList"
-			// + type + "Url.txt");
-			FileInputStream fis = new FileInputStream(
-					"E:/dir/patents/patentlist/patentListPage/patentList"
-							+ type + "Url.txt");
+			FileInputStream fis = new FileInputStream(Constants.URL_TXT_PATH
+					+ "patentList" + type + "Url.txt");
 			BufferedReader br = new BufferedReader(new InputStreamReader(fis,
 					"gb2312"));
 			String tempbf;
@@ -258,10 +296,8 @@ public class GetPatents {
 					URL url = new URL(tempbf);
 					String s = "" + n;
 					n++;
-					// File urlsfile = new
-					// File("E:/cjx/patents/patentPages/"+type+"/"+s+".html");
-					File urlsfile = new File("E:/dir/patents/patentPages/"
-							+ type + "/" + s + ".html");
+					File urlsfile = new File(Constants.WEBSITE_PATH + type
+							+ "/" + s + ".html");
 					if (urlsfile.exists()) {
 						continue;
 					} else {
@@ -300,10 +336,7 @@ public class GetPatents {
 			if (html.toString().indexOf("数据库中无符合条件的专利记录") != -1) {
 				throw new Exception("页面错误，重新下载！" + url.toString());
 			}
-
-			// File urlsfile = new File("E:/cjx/patents/patentPages/" + type +
-			// "/"+filename+".html");
-			File urlsfile = new File("E:/dir/patents/patentPages/" + type + "/"
+			File urlsfile = new File(Constants.WEBSITE_PATH + type + "/"
 					+ filename + ".html");
 			FileWriter wt = new FileWriter(urlsfile);
 			BufferedWriter bw = new BufferedWriter(wt);
@@ -469,6 +502,19 @@ public class GetPatents {
 		public String getRequestCharSet() {
 			// return super.getRequestCharSet();
 			return "gb2312";
+		}
+	}
+
+	// Inner class for UTF-8 support
+	public static class UTF8GetMethod extends GetMethod {
+		public UTF8GetMethod(String url) {
+			super(url);
+		}
+
+		@Override
+		public String getRequestCharSet() {
+			// return super.getRequestCharSet();
+			return "utf-8";
 		}
 	}
 
